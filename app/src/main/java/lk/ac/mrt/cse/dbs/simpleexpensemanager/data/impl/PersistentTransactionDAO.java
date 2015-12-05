@@ -4,24 +4,26 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import lk.ac.mrt.cse.dbs.simpleexpensemanager.Utility.ExpenseUtils;
+import lk.ac.mrt.cse.dbs.simpleexpensemanager.control.DBHelper;
+import lk.ac.mrt.cse.dbs.simpleexpensemanager.data.ExpenseMetaData;
 import lk.ac.mrt.cse.dbs.simpleexpensemanager.data.TransactionDAO;
 import lk.ac.mrt.cse.dbs.simpleexpensemanager.data.model.ExpenseType;
 import lk.ac.mrt.cse.dbs.simpleexpensemanager.data.model.Transaction;
 
 /**
- * Created by Yasas on 12/3/2015.
+ * Created by Yasas Senarath (130556L)
+ * For DB Project
  */
 public class PersistentTransactionDAO implements TransactionDAO {
-    private SQLiteDatabase db;
+    private DBHelper dbHelper;
 
-    public PersistentTransactionDAO(SQLiteDatabase db) {
-        this.db = db;
+    public PersistentTransactionDAO(DBHelper dbHelper) {
+        this.dbHelper = dbHelper;
     }
 
     /**
@@ -34,12 +36,16 @@ public class PersistentTransactionDAO implements TransactionDAO {
      */
     @Override
     public void logTransaction(Date date, String accountNo, ExpenseType expenseType, double amount) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        // Content value (Builder)
         ContentValues contentValues = new ContentValues();
-        contentValues.put("acc_id", accountNo);
-        contentValues.put("amount", amount);
-        contentValues.put("date", date.toString());
-        contentValues.put("is_expense", expenseType == ExpenseType.EXPENSE);
-        db.insert("transaction_", null, contentValues);
+        contentValues.put(ExpenseMetaData.TRANSACTION_COLUMN_ACCOUNT_NO, accountNo);
+        contentValues.put(ExpenseMetaData.TRANSACTION_COLUMN_AMOUNT, amount);
+        contentValues.put(ExpenseMetaData.TRANSACTION_COLUMN_DATE, date.toString());
+        contentValues.put(ExpenseMetaData.TRANSACTION_COLUMN_EXPENSE_TYPE, expenseType == ExpenseType.EXPENSE);
+        // Insert to table
+        db.insert(ExpenseMetaData.TRANSACTION_TABLE_NAME, null, contentValues);
+        db.close();
     }
 
     /**
@@ -49,36 +55,37 @@ public class PersistentTransactionDAO implements TransactionDAO {
      */
     @Override
     public List<Transaction> getAllTransactionLogs() {
-        ArrayList<Transaction> array_list = new ArrayList<Transaction>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-        Cursor res = db.rawQuery("select * from transaction_ order by transaction_id desc", null);
+        ArrayList<Transaction> array_list = new ArrayList<>();
+
+        Cursor res = db.rawQuery("SELECT * FROM " + ExpenseMetaData.TRANSACTION_TABLE_NAME +
+                " ORDER BY " + ExpenseMetaData.TRANSACTION_COLUMN_TRANSACTION_ID, null);
 
         if (res.moveToFirst()) {
-            SimpleDateFormat formatter = new SimpleDateFormat("EEE MMM d HH:mm:ss zzz yyyy");
-            while (res.isAfterLast() == false) {
-                String acc_id = res.getString(res.getColumnIndex("acc_id"));
-                int is_expense = res.getInt(res.getColumnIndex("is_expense"));
-                ExpenseType expenseType;
-                if (is_expense == 1) {
-                    expenseType = ExpenseType.EXPENSE;
-                } else {
-                    expenseType = ExpenseType.INCOME;
-                }
-                Double amount = res.getDouble(res.getColumnIndex("amount"));
-                String strDate = res.getString(res.getColumnIndex("date"));
-                Date date = null;
-                try {
-                    date = formatter.parse(strDate);
-                } catch (ParseException e) {
+            while (!res.isAfterLast()) {
+                // Account no
+                String acc_id = res.getString(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_ACCOUNT_NO));
+                // Expense type
+                int expenseTypeInt = res.getInt(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_EXPENSE_TYPE));
+                ExpenseType expenseType = ExpenseUtils.getExpenseType(expenseTypeInt);
+                // Transaction Amount
+                Double amount = res.getDouble(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_AMOUNT));
+                // Date
+                String strDate = res.getString(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_DATE));
+                Date date = ExpenseUtils.getDate(strDate);
 
-                }
+                // Full Transaction
                 Transaction a = new Transaction(date, acc_id, expenseType, amount);
+                // Add to return list
                 array_list.add(a);
+                // Move to next item in selection
                 res.moveToNext();
             }
-        } else {
+        } /* else {
             // EMPTY: return empty list if there are no transactions
-        }
+        } */
+        db.close();
         return array_list;
     }
 
@@ -90,36 +97,37 @@ public class PersistentTransactionDAO implements TransactionDAO {
      */
     @Override
     public List<Transaction> getPaginatedTransactionLogs(int limit) {
-        ArrayList<Transaction> array_list = new ArrayList<Transaction>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-        Cursor res = db.rawQuery("select * from transaction_ order by transaction_id desc limit " + limit, null);
+        ArrayList<Transaction> array_list = new ArrayList<>();
+
+        Cursor res = db.rawQuery("SELECT * FROM " + ExpenseMetaData.TRANSACTION_TABLE_NAME +
+                " ORDER BY " + ExpenseMetaData.TRANSACTION_COLUMN_TRANSACTION_ID + " DESC LIMIT " + limit, null);
 
         if (res.moveToFirst()) {
-            SimpleDateFormat formatter = new SimpleDateFormat("EEE MMM d HH:mm:ss zzz yyyy");
             while (!res.isAfterLast()) {
-                String acc_id = res.getString(res.getColumnIndex("acc_id"));
-                int is_expense = res.getInt(res.getColumnIndex("is_expense"));
-                ExpenseType expenseType;
-                if (is_expense == 1) {
-                    expenseType = ExpenseType.EXPENSE;
-                } else {
-                    expenseType = ExpenseType.INCOME;
-                }
-                Double amount = res.getDouble(res.getColumnIndex("amount"));
-                String strDate = res.getString(res.getColumnIndex("date"));
-                Date date = null;
-                try {
-                    date = formatter.parse(strDate);
-                } catch (ParseException e) {
-                    // EMPTY: return empty list if there are no transactions
-                }
+                // Account no
+                String acc_id = res.getString(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_ACCOUNT_NO));
+                // Expense type
+                int expenseTypeInt = res.getInt(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_EXPENSE_TYPE));
+                ExpenseType expenseType = ExpenseUtils.getExpenseType(expenseTypeInt);
+                // Transaction Amount
+                Double amount = res.getDouble(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_AMOUNT));
+                // Date
+                String strDate = res.getString(res.getColumnIndex(ExpenseMetaData.TRANSACTION_COLUMN_DATE));
+                Date date = ExpenseUtils.getDate(strDate);
+
+                // Full Transaction
                 Transaction a = new Transaction(date, acc_id, expenseType, amount);
+                // Add to return list
                 array_list.add(a);
+                // Move to next item in selection
                 res.moveToNext();
             }
-    } else {
+    } /* else {
         // EMPTY: return empty list if there are no transactions
-    }
+    } */
+        db.close();
         return array_list;
     }
 }
